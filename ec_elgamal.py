@@ -33,11 +33,25 @@ class Point:
     self.y = (-self.y) + MODULO_P
 
 # 分析クラス
-class Analysis:
+class Operation:
   def __init__(self):
     self.mult = 0
     self.reduction = 0
+  
+  def multiply(self, x: int, y: int):
+    self.mult += 1
+    return x*y
+  
+  def modulo(self, x: int, y: int):
+    if x >= y:
+      self.reduction += 1
+    return x % y
+  
+  def div(self, x: int, y: int):
+    self.reduction += 1
+    return x // y
 
+opr = Operation()
 
 # =============================
 # サブ関数 (主要関数内で使用されるサブ関数)
@@ -45,19 +59,21 @@ class Analysis:
 
 # 拡張ユークリッド互除法
 def egcd(a: int, b: int):
+    global opr
     (x, lastx) = (0, 1)
     (y, lasty) = (1, 0)
     while b != 0:
-        q = a // b
-        (a, b) = (b, a - q*b)
-        (x, lastx) = (lastx - q * x, x)
-        (y, lasty) = (lasty - q * y, y)
+        q = opr.div(a, b)
+        (a, b) = (b, a - opr.multiply(q, b))
+        (x, lastx) = (lastx - opr.multiply(q, x), x)
+        (y, lasty) = (lasty - opr.multiply(q, y), y)
     return (lastx, lasty, a)
 
 # ax ≡ 1 (mod m)
 def modinv(a: int, m: int):
+    global opr
     (inv, _, _) = egcd(a, m)
-    return inv % m
+    return opr.modulo(inv, m)
 
 # =============================
 # 主要関数
@@ -65,6 +81,7 @@ def modinv(a: int, m: int):
 
 # 楕円曲線上の点演算
 def PointAdd(P: Point, Q: Point):
+  global opr
   if P.is_inf():
     return Q
   elif Q.is_inf():
@@ -73,17 +90,23 @@ def PointAdd(P: Point, Q: Point):
     if ((P.y + Q.y) == MODULO_P):
       return Point(INF, INF)
     else:
-      tmp1 = (3*(P.x)**2 + A)
-      tmp2 = 2*P.y
+      # tmp1 = (3*(P.x)**2 + A)
+      tmp1 = opr.multiply(opr.multiply(3, P.x), P.x) + A
+      # tmp2 = 2*P.y
+      tmp2 = opr.multiply(2, P.y)
       inv_tmp2 = modinv(tmp2, MODULO_P)
-      lmd = (tmp1 * inv_tmp2) % MODULO_P
+      # lmd = (tmp1 * inv_tmp2) % MODULO_P
+      lmd = opr.modulo(opr.multiply(tmp1, inv_tmp2), MODULO_P)
   else:
     tmp1 = (Q.y - P.y)
     tmp2 = (Q.x - P.x)
     inv_tmp2 = modinv(tmp2, MODULO_P)
-    lmd = (tmp1 * inv_tmp2) % MODULO_P
-  x_3 = (lmd**2 - P.x - Q.x) % MODULO_P
-  y_3 = (lmd*(P.x - x_3) - P.y) % MODULO_P
+    # lmd = (tmp1 * inv_tmp2) % MODULO_P
+    lmd = opr.modulo(opr.multiply(tmp1, inv_tmp2), MODULO_P)
+  # x_3 = (lmd**2 - P.x - Q.x) % MODULO_P
+  x_3 = opr.modulo(opr.multiply(lmd, lmd) - P.x - Q.x, MODULO_P)
+  # y_3 = (lmd*(P.x - x_3) - P.y) % MODULO_P
+  y_3 = opr.modulo(opr.multiply(lmd, (P.x - x_3)) - P.y, MODULO_P)
   return Point(x_3, y_3)
 
 # 楕円曲線上のバイナリ法
@@ -91,6 +114,7 @@ def PointAdd(P: Point, Q: Point):
 def Binary(d: int, P: Point):
   Q = Point(INF, INF)
   d_bit_seq = bin(d)[2:]
+  print("ハミング重み: {0}".format(d_bit_seq.count("1")))
   for i in d_bit_seq:
     Q = PointAdd(Q, Q)
     if int(i) == 1:
@@ -141,6 +165,9 @@ if __name__ == '__main__':
 
   correct = 0
   for i in range(LOOP):
+    print("i = {0}".format(i))
+    opr.mult = 0
+    opr.reduction = 0
     # 平文の生成
     plaintext = random.randint(1, MODULO_P//100)
 
@@ -156,7 +183,10 @@ if __name__ == '__main__':
     decPlaintext = PointToMsg(DecM)
     if plaintext == decPlaintext:
       correct += 1
-  
+    print(vars(opr))
+    print(plaintext)
+    print(decPlaintext)
+
   print(correct)
 
 
