@@ -9,10 +9,11 @@ import sympy
 # グローバル定数
 # =============================
 INF = -1
-MODULO_P = 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f
+MODULO_P = 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f # 256bit
 A = 0x0000000000000000000000000000000000000000000000000000000000000000
 B = 0x0000000000000000000000000000000000000000000000000000000000000007
 N = 100
+LOOP = 100
 
 
 # =============================
@@ -112,9 +113,7 @@ def ElGamalEnc(M: Point, GP: Point, PUBLIC_KEY: Point):
 
 # 楕円ElGamal暗号のDecryption
 def ElGamalDec(C1, C2, d):
-  print(vars(C1))
   C1.inv()
-  print(vars(C1))
   return PointAdd(C2, Binary(d, C1))
 
 
@@ -123,30 +122,33 @@ def ElGamalDec(C1, C2, d):
 # =============================
 if __name__ == '__main__':
   # 生成元
-  x = 0x69be667ef9dcbbac55b06295c1870b17129b3cdb5dce28e955f281
+  x = 0xffffffffffffffffffffffffeeefffffffff
   GP = MsgToPoint(x)
-  # print(x)
-  # print(vars(GP))
 
   # 秘密鍵と公開鍵の生成
   d = 0x49be667ef9dcbbac55b06295ce870b07029b3cdb2dce28d959f2815b16f81798
   PUBLIC_KEY = Binary(d, GP)
 
-  # 平文の生成
-  plaintext = 0x483ada7726a3c4000da4fbfc0e1108a8fd17b448a68554199c47d08f33
-  print(plaintext)
+  # =========================
 
-  # 平文 → Point
-  M = MsgToPoint(plaintext)
-  print(vars(M))
+  correct = 0
+  for i in range(LOOP):
+    # 平文の生成
+    plaintext = random.randint(1, MODULO_P//100)
 
-  # 暗号化・復号
-  C1, C2 = ElGamalEnc(M, GP, PUBLIC_KEY)
-  DecM = ElGamalDec(C1, C2, d)
-  print(vars(DecM))
+    # 平文 → Point
+    M = MsgToPoint(plaintext)
 
-  # Point → 平文
-  decPlaintext = PointToMsg(DecM)
-  print(decPlaintext)
+    # 暗号化・復号
+    C1, C2 = ElGamalEnc(M, GP, PUBLIC_KEY)
+    DecM = ElGamalDec(C1, C2, d)
+
+    # Point → 平文
+    decPlaintext = PointToMsg(DecM)
+
+    if plaintext == decPlaintext:
+      correct += 1
+  
+  print(correct)
 
 
