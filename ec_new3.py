@@ -1,17 +1,22 @@
+# 楕円ElGamal暗号
+
 import math
 import sys
+import random
+import sympy
 
 # =============================
 # グローバル定数
 # =============================
 INF = -1
-MODULO_P = 17
-A = -3
-B = 3
+MODULO_P = 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f
+A = 0x0000000000000000000000000000000000000000000000000000000000000000
+B = 0x0000000000000000000000000000000000000000000000000000000000000007
+N = 100
 
 
 # =============================
-# サブ関数 (主要関数内で使用されるサブ関数)
+# class
 # =============================
 
 # 座標を表すclass
@@ -23,6 +28,13 @@ class Point:
   # 点Pが無限遠点であるかチェックする
   def is_inf(self):
     return (self.x == self.y == INF)
+  
+  def inv(self):
+    self.y = (-self.y) + MODULO_P
+
+# =============================
+# サブ関数 (主要関数内で使用されるサブ関数)
+# =============================
 
 # ユークリッド互除法
 def egcd(a: int, b: int):
@@ -78,6 +90,63 @@ def Binary(d: int, P: Point):
       Q = PointAdd(Q, P)
   return Q
 
+
+# MsgToPoint
+def MsgToPoint(m: int):
+  for i in range(0, N):
+    x = 100*m+i
+    z = pow(x, 3, MODULO_P)
+    z += A*x + B
+    if sympy.legendre_symbol(z, MODULO_P) == 1:
+      y = sympy.sqrt_mod(z, MODULO_P)
+      return Point(x, y)
+
+# PointToMsg
+def PointToMsg(P: Point):
+  return P.x // 100
+
+# 楕円ElGamal暗号のEncryption
+def ElGamalEnc(M: Point, GP: Point, PUBLIC_KEY: Point):
+  r = random.randint(1, MODULO_P)
+  return (Binary(r, GP), PointAdd(M, Binary(r, PUBLIC_KEY)))
+
+# 楕円ElGamal暗号のDecryption
+def ElGamalDec(C1, C2, d):
+  print(vars(C1))
+  C1.inv()
+  print(vars(C1))
+  return PointAdd(C2, Binary(d, C1))
+
+
+# =============================
+# main function
+# =============================
 if __name__ == '__main__':
-  P = Point(7, 6)
-  Q = Binary(22, P)
+  # 生成元
+  x = 0x69be667ef9dcbbac55b06295c1870b17129b3cdb5dce28e955f281
+  GP = MsgToPoint(x)
+  # print(x)
+  # print(vars(GP))
+
+  # 秘密鍵と公開鍵の生成
+  d = 0x49be667ef9dcbbac55b06295ce870b07029b3cdb2dce28d959f2815b16f81798
+  PUBLIC_KEY = Binary(d, GP)
+
+  # 平文の生成
+  plaintext = 0x483ada7726a3c4000da4fbfc0e1108a8fd17b448a68554199c47d08f33
+  print(plaintext)
+
+  # 平文 → Point
+  M = MsgToPoint(plaintext)
+  print(vars(M))
+
+  # 暗号化・復号
+  C1, C2 = ElGamalEnc(M, GP, PUBLIC_KEY)
+  DecM = ElGamalDec(C1, C2, d)
+  print(vars(DecM))
+
+  # Point → 平文
+  decPlaintext = PointToMsg(DecM)
+  print(decPlaintext)
+
+
