@@ -15,7 +15,6 @@ B = 0x0000000000000000000000000000000000000000000000000000000000000007
 N = 100
 LOOP = 100
 
-
 # =============================
 # class
 # =============================
@@ -33,17 +32,24 @@ class Point:
   def inv(self):
     self.y = (-self.y) + MODULO_P
 
+# 分析クラス
+class Analysis:
+  def __init__(self):
+    self.mult = 0
+    self.reduction = 0
+
+
 # =============================
 # サブ関数 (主要関数内で使用されるサブ関数)
 # =============================
 
-# ユークリッド互除法
+# 拡張ユークリッド互除法
 def egcd(a: int, b: int):
     (x, lastx) = (0, 1)
     (y, lasty) = (1, 0)
     while b != 0:
         q = a // b
-        (a, b) = (b, a % b)
+        (a, b) = (b, a - q*b)
         (x, lastx) = (lastx - q * x, x)
         (y, lasty) = (lasty - q * y, y)
     return (lastx, lasty, a)
@@ -64,7 +70,7 @@ def PointAdd(P: Point, Q: Point):
   elif Q.is_inf():
     return P
   elif P.x == Q.x:
-    if ((P.y + Q.y) % MODULO_P == 0):
+    if ((P.y + Q.y) == MODULO_P):
       return Point(INF, INF)
     else:
       tmp1 = (3*(P.x)**2 + A)
@@ -96,7 +102,9 @@ def Binary(d: int, P: Point):
 def MsgToPoint(m: int):
   for i in range(0, N):
     x = 100*m+i
-    z = pow(x, 3, MODULO_P)
+    # z = pow(x, 3, MODULO_P)
+    z = x**3
+    z %= MODULO_P
     z += A*x + B
     if sympy.legendre_symbol(z, MODULO_P) == 1:
       y = sympy.sqrt_mod(z, MODULO_P)
@@ -112,7 +120,7 @@ def ElGamalEnc(M: Point, GP: Point, PUBLIC_KEY: Point):
   return (Binary(r, GP), PointAdd(M, Binary(r, PUBLIC_KEY)))
 
 # 楕円ElGamal暗号のDecryption
-def ElGamalDec(C1, C2, d):
+def ElGamalDec(C1: Point, C2: Point, d: int):
   C1.inv()
   return PointAdd(C2, Binary(d, C1))
 
@@ -140,12 +148,12 @@ if __name__ == '__main__':
     M = MsgToPoint(plaintext)
 
     # 暗号化・復号
+    # コアロジック
     C1, C2 = ElGamalEnc(M, GP, PUBLIC_KEY)
     DecM = ElGamalDec(C1, C2, d)
 
     # Point → 平文
     decPlaintext = PointToMsg(DecM)
-
     if plaintext == decPlaintext:
       correct += 1
   
