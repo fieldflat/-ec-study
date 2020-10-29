@@ -1,5 +1,5 @@
 # 楕円ElGamal暗号
-# alpha = (12*math.log(2)*math.log(2**256))/(math.pi**2)+0.06535
+# alpha = (12*math.log(2)*math.log(2**256))/(math.pi**2)+1.467
 
 import math
 import sys
@@ -22,6 +22,7 @@ NR1 = 0
 NR1_SUM = 0
 NR2 = 0
 NR2_SUM = 0
+tmp_mult_sum_list = []
 
 # =============================
 # class
@@ -53,12 +54,9 @@ class Operation:
   def modulo(self, x: int, y: int):
     if x >= y:
       self.reduction += 1
-    # else:
-    #   callee_function()
     return x % y
   
   def div(self, x: int, y: int):
-    # self.reduction += 1
     return x // y
 
 opr = Operation()
@@ -69,12 +67,10 @@ opr = Operation()
 
 # 拡張ユークリッド互除法
 # multiply: 3*alpha  (alpha ... 平均操作回数)
+### 実測値: 大体453.2496669540005
 # reduction: alpha
 def egcd(a: int, b: int):
     global opr
-    stack = inspect.stack()
-    the_method = stack[4][0].f_code.co_name
-    print("  I was called by {}()".format(the_method))
     (x, lastx) = (0, 1)
     (y, lasty) = (1, 0)
     while b != 0:
@@ -92,73 +88,61 @@ def modinv(a: int, m: int):
     (inv, _, _) = egcd(a, m)
     return opr.modulo(inv, m) # ほぼmodulo発生しない！
 
-# 関数の呼び出し元
-def callee_function():
-  # print(inspect.stack())
-  # print(inspect.stack()[1].filename)
-  print(inspect.stack()[1].function)
+# ElGamalDecからの関数呼び出しであればTrueを返す．
+def calledFromElGamalDec():
+  stack = inspect.stack()
+  for i in range(len(stack)-1, -1, -1):
+    if stack[i][0].f_code.co_name == "ElGamalDec":
+      return True
+  return False
 
 # =============================
 # 主要関数
 # =============================
 
 # 楕円曲線上の点演算
+# 2倍算
+### 実測値: 459.129860112433
+# 加算
+### 実測値: 456.066388308977
 def PointAdd(P: Point, Q: Point):
   global opr
   if P.is_inf():
+    # 一回の復号あたり1回実行される
     return Q
   elif Q.is_inf():
+    # 一回の復号あたり1回実行される
     return P
   elif P.x == Q.x:
     if ((P.y + Q.y) == MODULO_P):
       return Point(INF, INF)
     else:
-      # tmp1 = (3*(P.x)**2 + A)
       tmp1 = opr.multiply(opr.multiply(3, P.x), P.x) + A
-      # tmp2 = 2*P.y
       tmp2 = opr.multiply(2, P.y)
       inv_tmp2 = modinv(tmp2, MODULO_P)
-      # lmd = (tmp1 * inv_tmp2) % MODULO_P
       lmd = opr.modulo(opr.multiply(tmp1, inv_tmp2), MODULO_P) # reductionはほぼ発生する．
-      # x_3 = (lmd**2 - P.x - Q.x) % MODULO_P
       x_3 = opr.modulo(opr.multiply(lmd, lmd) - P.x - Q.x, MODULO_P)  # reductionはほぼ発生する。
-      # y_3 = (lmd*(P.x - x_3) - P.y) % MODULO_P
       y_3 = opr.modulo(opr.multiply(lmd, (P.x - x_3)) - P.y, MODULO_P)  # reduction発生しない時もある。
-      if (opr.multiply(lmd, (P.x - x_3)) - P.y) < MODULO_P:
-        global NR2
-        NR2 += 1
   else:
     tmp1 = (Q.y - P.y)
     tmp2 = (Q.x - P.x)
     inv_tmp2 = modinv(tmp2, MODULO_P)
-    # lmd = (tmp1 * inv_tmp2) % MODULO_P
     lmd = opr.modulo(opr.multiply(tmp1, inv_tmp2), MODULO_P) # reduction発生しない時もある。
-    if opr.multiply(tmp1, inv_tmp2) < MODULO_P:
-      global NR1
-      NR1 += 1
-    # x_3 = (lmd**2 - P.x - Q.x) % MODULO_P
     x_3 = opr.modulo(opr.multiply(lmd, lmd) - P.x - Q.x, MODULO_P) # reductionはほぼ発生する。
-    # y_3 = (lmd*(P.x - x_3) - P.y) % MODULO_P
     y_3 = opr.modulo(opr.multiply(lmd, (P.x - x_3)) - P.y, MODULO_P) # reduction発生しない時もある。
-    # if (opr.multiply(lmd, (P.x - x_3)) - P.y) < MODULO_P:
-    #   global NR2
-    #   NR2 += 1
   return Point(x_3, y_3)
 
 # 楕円曲線上のバイナリ法
 # Q = dPを求める
 def Binary(d: int, P: Point):
+  global opr
   Q = Point(INF, INF)
   d_bit_seq = bin(d)[2:]
-  t, w = 0, 0
   for i in d_bit_seq:
-    Q = PointAdd(Q, Q)
-    t += 1
+    Q = PointAdd(Q, Q)  # 実測値(multiplication): 457.4243529411765
     if int(i) == 1:
-      Q = PointAdd(P, Q)
-      w += 1
+      Q = PointAdd(P, Q)  # 実測値(multiplication): 452.6232283464567
   return Q
-
 
 # MsgToPoint
 def MsgToPoint(m: int):
@@ -183,13 +167,9 @@ def ElGamalEnc(M: Point, GP: Point, PUBLIC_KEY: Point):
 
 # 楕円ElGamal暗号のDecryption
 def ElGamalDec(C1: Point, C2: Point, d: int):
-  global NR1, NR1_SUM, NR2, NR2_SUM
-  NR1, NR2 = 0, 0
   C1.inv()
-  b = Binary(d, C1)
-  ans = PointAdd(C2, b)
-  NR1_SUM += NR1
-  NR2_SUM += NR2
+  B = Binary(d, C1)
+  ans = PointAdd(C2, B)
   return ans
 
 
@@ -251,7 +231,8 @@ if __name__ == '__main__':
   print("平均 reduction = {0}".format(all_reduction/LOOP))
   print("平均 NR1 = {0}".format(NR1_SUM/LOOP))
   print("平均 NR2 = {0}".format(NR2_SUM/LOOP))
-  
+  print("tmp_mult_sum / LOOP = {0}".format(sum(tmp_mult_sum_list)/len(tmp_mult_sum_list)))
+
   plt.hist(mult_list, bins=LOOP)
   plt.show()
   plt.hist(reduction_list, bins=LOOP)
