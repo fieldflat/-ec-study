@@ -7,6 +7,7 @@ import sys
 import random
 import sympy
 import inspect
+from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -185,8 +186,7 @@ if __name__ == '__main__':
   PUBLIC_KEY = Binary(d, GP)
 
   correct = 0
-  for i in range(LOOP):
-    print("i = {0}".format(i))
+  for i in tqdm(range(LOOP)):
     plaintext = random.randint(1, MODULO_P//100)
     M = MsgToPoint(plaintext)
 
