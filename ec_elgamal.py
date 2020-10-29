@@ -62,6 +62,7 @@ class Operation:
     return x % y
   
   def div(self, x: int, y: int):
+    self.reduction += 1
     return x // y
 
 # opr is the global variable. 
