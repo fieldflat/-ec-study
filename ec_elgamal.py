@@ -17,7 +17,7 @@ MODULO_P = 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f # 
 A = 0x0000000000000000000000000000000000000000000000000000000000000000
 B = 0x0000000000000000000000000000000000000000000000000000000000000007
 N = 100
-LOOP = 100
+LOOP = 1000
 NR1 = 0
 NR1_SUM = 0
 NR2 = 0
@@ -122,14 +122,22 @@ def PointAdd(P: Point, Q: Point):
       inv_tmp2 = modinv(tmp2, MODULO_P)
       lmd = opr.modulo(opr.multiply(tmp1, inv_tmp2), MODULO_P) # reductionはほぼ発生する．
       x_3 = opr.modulo(opr.multiply(lmd, lmd) - P.x - Q.x, MODULO_P)  # reductionはほぼ発生する。
-      y_3 = opr.modulo(opr.multiply(lmd, (P.x - x_3)) - P.y, MODULO_P)  # reduction発生しない時もある。
+      y_3 = opr.modulo(opr.multiply(lmd, (P.x - x_3)) - P.y, MODULO_P)  # reduction発生しない時もある(1/2)。
+      if calledFromElGamalDec():
+        if opr.multiply(lmd, (P.x - x_3)) - P.y < MODULO_P:
+          global NR1
+          NR1 += 1
   else:
     tmp1 = (Q.y - P.y)
     tmp2 = (Q.x - P.x)
     inv_tmp2 = modinv(tmp2, MODULO_P)
-    lmd = opr.modulo(opr.multiply(tmp1, inv_tmp2), MODULO_P) # reduction発生しない時もある。
+    lmd = opr.modulo(opr.multiply(tmp1, inv_tmp2), MODULO_P) # reduction発生しない時もある(1/2)。
+    if calledFromElGamalDec():
+      if opr.multiply(tmp1, inv_tmp2) < MODULO_P:
+        global NR2
+        NR2 += 1
     x_3 = opr.modulo(opr.multiply(lmd, lmd) - P.x - Q.x, MODULO_P) # reductionはほぼ発生する。
-    y_3 = opr.modulo(opr.multiply(lmd, (P.x - x_3)) - P.y, MODULO_P) # reduction発生しない時もある。
+    y_3 = opr.modulo(opr.multiply(lmd, (P.x - x_3)) - P.y, MODULO_P) # reduction発生しない時もある(1/2)。
   return Point(x_3, y_3)
 
 # 楕円曲線上のバイナリ法
@@ -218,6 +226,12 @@ if __name__ == '__main__':
     print("平均 reduction = {0}".format(all_reduction/(i+1)))
     mult_list.append(opr.mult)
     reduction_list.append(opr.reduction)
+    NR1_SUM += NR1
+    print("NR1 = {0}".format(NR1))
+    NR1 = 0
+    NR2_SUM += NR2
+    print("NR2 = {0}".format(NR2))
+    NR2 = 0
 
     # Point → 平文
     decPlaintext = PointToMsg(DecM)
@@ -231,7 +245,7 @@ if __name__ == '__main__':
   print("平均 reduction = {0}".format(all_reduction/LOOP))
   print("平均 NR1 = {0}".format(NR1_SUM/LOOP))
   print("平均 NR2 = {0}".format(NR2_SUM/LOOP))
-  print("tmp_mult_sum / LOOP = {0}".format(sum(tmp_mult_sum_list)/len(tmp_mult_sum_list)))
+  # print("tmp_mult_sum / LOOP = {0}".format(sum(tmp_mult_sum_list)/len(tmp_mult_sum_list)))
 
   plt.hist(mult_list, bins=LOOP)
   plt.show()
