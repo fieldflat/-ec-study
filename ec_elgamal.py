@@ -1,9 +1,13 @@
 # 楕円ElGamal暗号
+# alpha = (12*math.log(2)*math.log(2**256))/(math.pi**2)+0.06535
 
 import math
 import sys
 import random
 import sympy
+import inspect
+import numpy as np
+import matplotlib.pyplot as plt
 
 # =============================
 # グローバル定数
@@ -14,6 +18,10 @@ A = 0x0000000000000000000000000000000000000000000000000000000000000000
 B = 0x0000000000000000000000000000000000000000000000000000000000000007
 N = 100
 LOOP = 100
+NR1 = 0
+NR1_SUM = 0
+NR2 = 0
+NR2_SUM = 0
 
 # =============================
 # class
@@ -45,10 +53,12 @@ class Operation:
   def modulo(self, x: int, y: int):
     if x >= y:
       self.reduction += 1
+    # else:
+    #   callee_function()
     return x % y
   
   def div(self, x: int, y: int):
-    self.reduction += 1
+    # self.reduction += 1
     return x // y
 
 opr = Operation()
@@ -58,8 +68,13 @@ opr = Operation()
 # =============================
 
 # 拡張ユークリッド互除法
+# multiply: 3*alpha  (alpha ... 平均操作回数)
+# reduction: alpha
 def egcd(a: int, b: int):
     global opr
+    stack = inspect.stack()
+    the_method = stack[4][0].f_code.co_name
+    print("  I was called by {}()".format(the_method))
     (x, lastx) = (0, 1)
     (y, lasty) = (1, 0)
     while b != 0:
@@ -70,10 +85,18 @@ def egcd(a: int, b: int):
     return (lastx, lasty, a)
 
 # ax ≡ 1 (mod m)
+# multiply: 3*alpha  (alpha ... 平均操作回数)
+# reduction: alpha
 def modinv(a: int, m: int):
     global opr
     (inv, _, _) = egcd(a, m)
-    return opr.modulo(inv, m)
+    return opr.modulo(inv, m) # ほぼmodulo発生しない！
+
+# 関数の呼び出し元
+def callee_function():
+  # print(inspect.stack())
+  # print(inspect.stack()[1].filename)
+  print(inspect.stack()[1].function)
 
 # =============================
 # 主要関数
@@ -96,17 +119,30 @@ def PointAdd(P: Point, Q: Point):
       tmp2 = opr.multiply(2, P.y)
       inv_tmp2 = modinv(tmp2, MODULO_P)
       # lmd = (tmp1 * inv_tmp2) % MODULO_P
-      lmd = opr.modulo(opr.multiply(tmp1, inv_tmp2), MODULO_P)
+      lmd = opr.modulo(opr.multiply(tmp1, inv_tmp2), MODULO_P) # reductionはほぼ発生する．
+      # x_3 = (lmd**2 - P.x - Q.x) % MODULO_P
+      x_3 = opr.modulo(opr.multiply(lmd, lmd) - P.x - Q.x, MODULO_P)  # reductionはほぼ発生する。
+      # y_3 = (lmd*(P.x - x_3) - P.y) % MODULO_P
+      y_3 = opr.modulo(opr.multiply(lmd, (P.x - x_3)) - P.y, MODULO_P)  # reduction発生しない時もある。
+      if (opr.multiply(lmd, (P.x - x_3)) - P.y) < MODULO_P:
+        global NR2
+        NR2 += 1
   else:
     tmp1 = (Q.y - P.y)
     tmp2 = (Q.x - P.x)
     inv_tmp2 = modinv(tmp2, MODULO_P)
     # lmd = (tmp1 * inv_tmp2) % MODULO_P
-    lmd = opr.modulo(opr.multiply(tmp1, inv_tmp2), MODULO_P)
-  # x_3 = (lmd**2 - P.x - Q.x) % MODULO_P
-  x_3 = opr.modulo(opr.multiply(lmd, lmd) - P.x - Q.x, MODULO_P)
-  # y_3 = (lmd*(P.x - x_3) - P.y) % MODULO_P
-  y_3 = opr.modulo(opr.multiply(lmd, (P.x - x_3)) - P.y, MODULO_P)
+    lmd = opr.modulo(opr.multiply(tmp1, inv_tmp2), MODULO_P) # reduction発生しない時もある。
+    if opr.multiply(tmp1, inv_tmp2) < MODULO_P:
+      global NR1
+      NR1 += 1
+    # x_3 = (lmd**2 - P.x - Q.x) % MODULO_P
+    x_3 = opr.modulo(opr.multiply(lmd, lmd) - P.x - Q.x, MODULO_P) # reductionはほぼ発生する。
+    # y_3 = (lmd*(P.x - x_3) - P.y) % MODULO_P
+    y_3 = opr.modulo(opr.multiply(lmd, (P.x - x_3)) - P.y, MODULO_P) # reduction発生しない時もある。
+    # if (opr.multiply(lmd, (P.x - x_3)) - P.y) < MODULO_P:
+    #   global NR2
+    #   NR2 += 1
   return Point(x_3, y_3)
 
 # 楕円曲線上のバイナリ法
@@ -114,11 +150,13 @@ def PointAdd(P: Point, Q: Point):
 def Binary(d: int, P: Point):
   Q = Point(INF, INF)
   d_bit_seq = bin(d)[2:]
-  print("ハミング重み: {0}".format(d_bit_seq.count("1")))
+  t, w = 0, 0
   for i in d_bit_seq:
     Q = PointAdd(Q, Q)
+    t += 1
     if int(i) == 1:
-      Q = PointAdd(Q, P)
+      Q = PointAdd(P, Q)
+      w += 1
   return Q
 
 
@@ -145,8 +183,14 @@ def ElGamalEnc(M: Point, GP: Point, PUBLIC_KEY: Point):
 
 # 楕円ElGamal暗号のDecryption
 def ElGamalDec(C1: Point, C2: Point, d: int):
+  global NR1, NR1_SUM, NR2, NR2_SUM
+  NR1, NR2 = 0, 0
   C1.inv()
-  return PointAdd(C2, Binary(d, C1))
+  b = Binary(d, C1)
+  ans = PointAdd(C2, b)
+  NR1_SUM += NR1
+  NR2_SUM += NR2
+  return ans
 
 
 # =============================
@@ -154,20 +198,26 @@ def ElGamalDec(C1: Point, C2: Point, d: int):
 # =============================
 if __name__ == '__main__':
   # 生成元
-  x = 0xffffffffffffffffffffffffeeefffffffff
+  x = 0xffffffff222ffff9dcbbac55eeefffffffff
   GP = MsgToPoint(x)
 
   # 秘密鍵と公開鍵の生成
-  d = 0x49be667ef9dcbbac55b06295ce870b07029b3cdb2dce28d959f2815b16f81798
+  d = 0x49be667ef9dcbbac55b06295ce870b0702900cdb2dce28d959f2815b16f81798
+  d_bit_seq = bin(d)[2:]
+  print("ハミング重み: {0}".format(d_bit_seq.count("1")))
   PUBLIC_KEY = Binary(d, GP)
+
+  # 分析用
+  all_mult = 0
+  all_reduction = 0
+  mult_list = []
+  reduction_list = []
 
   # =========================
 
   correct = 0
   for i in range(LOOP):
     print("i = {0}".format(i))
-    opr.mult = 0
-    opr.reduction = 0
     # 平文の生成
     plaintext = random.randint(1, MODULO_P//100)
 
@@ -176,17 +226,35 @@ if __name__ == '__main__':
 
     # 暗号化・復号
     # コアロジック
-    C1, C2 = ElGamalEnc(M, GP, PUBLIC_KEY)
+    C1, C2 = ElGamalEnc(M, GP, PUBLIC_KEY) # 攻撃者も暗号文を自由に作成することができる．
+
+    opr.mult = 0
+    opr.reduction = 0
     DecM = ElGamalDec(C1, C2, d)
+    print(vars(opr))
+    all_mult += opr.mult
+    all_reduction += opr.reduction
+    print("平均 mult = {0}".format(all_mult/(i+1)))
+    print("平均 reduction = {0}".format(all_reduction/(i+1)))
+    mult_list.append(opr.mult)
+    reduction_list.append(opr.reduction)
 
     # Point → 平文
     decPlaintext = PointToMsg(DecM)
     if plaintext == decPlaintext:
       correct += 1
-    print(vars(opr))
-    print(plaintext)
-    print(decPlaintext)
 
+  print("========== 結果 ==========")
   print(correct)
+  print("ハミング重み: {0}".format(d_bit_seq.count("1")))
+  print("平均 mult = {0}".format(all_mult/LOOP))
+  print("平均 reduction = {0}".format(all_reduction/LOOP))
+  print("平均 NR1 = {0}".format(NR1_SUM/LOOP))
+  print("平均 NR2 = {0}".format(NR2_SUM/LOOP))
+  
+  plt.hist(mult_list, bins=LOOP)
+  plt.show()
+  plt.hist(reduction_list, bins=LOOP)
+  plt.show()
 
 
