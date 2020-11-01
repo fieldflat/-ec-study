@@ -9,6 +9,7 @@ import sympy
 import inspect
 from tqdm import tqdm
 import numpy as np
+from scipy.stats import norm
 import matplotlib.pyplot as plt
 
 # =============================
@@ -19,13 +20,14 @@ MODULO_P = 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f # 
 A = 0x0000000000000000000000000000000000000000000000000000000000000000
 B = 0x0000000000000000000000000000000000000000000000000000000000000007
 N = 100
-LOOP = 1000
+LOOP = 100
 
 # =============================
 # variables for analysis
 # =============================
 all_mult = 0
 all_reduction = 0
+egcd_count_list = []
 mult_list = []
 reduction_list = []
 
@@ -76,10 +78,20 @@ opr = Operation()
 # Extended Euclidean algorithm
 ### Measured value: 大体453.2496669540005
 def egcd(a: int, b: int):
-    global opr
+    global opr, egcd_count_list
     (x, lastx) = (0, 1)
     (y, lasty) = (1, 0)
-    while b != 0:
+    egcd_count = 0
+    if calledFromElGamalDec():
+      while b != 0:
+        egcd_count += 1
+        q = opr.div(a, b)
+        (a, b) = (b, a - opr.multiply(q, b))
+        (x, lastx) = (lastx - opr.multiply(q, x), x)
+        (y, lasty) = (lasty - opr.multiply(q, y), y)
+      egcd_count_list.append(egcd_count)
+    else:
+      while b != 0:
         q = opr.div(a, b)
         (a, b) = (b, a - opr.multiply(q, b))
         (x, lastx) = (lastx - opr.multiply(q, x), x)
@@ -214,9 +226,17 @@ if __name__ == '__main__':
   print("Average reduction = {0}".format(all_reduction/LOOP))
 
   # display histgram
-  plt.hist(mult_list, bins=LOOP)
+  plt.hist(mult_list, bins=len(set(mult_list)))
   plt.show()
-  plt.hist(reduction_list, bins=LOOP)
+  plt.hist(reduction_list, bins=len(set(reduction_list)))
+  plt.show()
+  plt.hist(egcd_count_list, bins=len(set(egcd_count_list)))
+  # normal distribution
+  mu = (12*math.log(2)*math.log(2**255))/(math.pi**2) + 1.467
+  sigma = 9.5
+  X = np.arange(100, 200, 0.1)
+  Y = norm.pdf(X, loc=mu, scale=sigma)
+  plt.plot(X, Y*len(egcd_count_list), 'r-')
   plt.show()
 
 
