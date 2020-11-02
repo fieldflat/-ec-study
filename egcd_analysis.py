@@ -8,8 +8,9 @@ import matplotlib.pyplot as plt
 # =============================
 # global constants
 # =============================
-LOOP = 100000
+LOOP = 10000
 MODULO_P = 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f  # 256bit
+ITERATION = 255+127-1
 
 # =============================
 # variables for analysis
@@ -23,7 +24,7 @@ def egcd(a: int, b: int):
   (x, lastx) = (0, 1)
   (y, lasty) = (1, 0)
   while b != 0:
-    count += 1
+    count += 3
     q = a//b
     (a, b) = (b, a - q*b)
     (x, lastx) = (lastx - q*x, x)
@@ -32,27 +33,39 @@ def egcd(a: int, b: int):
 
 if __name__ == '__main__':
   for _ in tqdm(range(LOOP)):
-    a = random.randint(1, MODULO_P//100)
-    b = random.randint(1, MODULO_P//100)
-    egcd(a, b)
+    for _ in range(ITERATION):
+      a = random.randint(1, MODULO_P)
+      b = random.randint(1, MODULO_P)
+      egcd(a, b)
     count_list.append(count)
     count = 0
   
   # display histgram
-  plt.hist(count_list, bins=len(set(count_list)))
+  plt.hist(count_list, bins=len(set(count_list)), density=True)
 
   # normal distribution
-  mu = (12*math.log(2)*math.log(2**255))/(math.pi**2) + 1.467
-  sigma = 9.5
+  # average is ok
+  alpha = (12*math.log(2)*math.log(2**256))/(math.pi**2) + 0.06535
 
-  X = np.arange(100, 200, 0.1)
+  mu = 3*alpha*ITERATION
+  sigma = 3*9.5*math.sqrt(ITERATION)
+
+  # mu = alpha*ITERATION
+  # sigma = 9.5*math.sqrt(ITERATION)
+
+  print("LOOP = {0}".format(LOOP))
+  print("MODULO_P = {0}".format(MODULO_P))
+  print("ITERATION = {0}".format(ITERATION))
+  print("alpha = {0}".format(alpha))
+  print("mu = {0}".format(mu))
+  print("sigma = {0}".format(sigma))
+  print("Average of Multipliucation (experimentally) = {0}".format(sum(count_list)/len(count_list)))
+  print("Average of Multipliucation (theoretical) = {0}".format(mu))
+
+  X = np.arange(mu-sigma*5, mu+sigma*5, 1)
   Y = norm.pdf(X, loc=mu, scale=sigma)
-  # プロットする
-  # fig = plt.figure()
-  # ax = fig.add_subplot(1, 1, 1)
-  # ax.grid(color='gray')
-  # ax.plot(X, Y, color='blue')
-  plt.plot(X, Y*LOOP, 'r-')
+  plt.plot(X, Y, 'r-')
+  plt.savefig("egcd_analysis.png")
 
   plt.show()
 

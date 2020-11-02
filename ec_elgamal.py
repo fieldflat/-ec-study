@@ -17,10 +17,11 @@ import matplotlib.pyplot as plt
 # =============================
 INF = -1
 MODULO_P = 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f # 256bit
+BIT = 256
 A = 0x0000000000000000000000000000000000000000000000000000000000000000
 B = 0x0000000000000000000000000000000000000000000000000000000000000007
 N = 100
-LOOP = 100
+LOOP = 1000
 
 # =============================
 # variables for analysis
@@ -81,6 +82,7 @@ def egcd(a: int, b: int):
     global opr, egcd_count_list
     (x, lastx) = (0, 1)
     (y, lasty) = (1, 0)
+
     egcd_count = 0
     if calledFromElGamalDec():
       while b != 0:
@@ -96,6 +98,12 @@ def egcd(a: int, b: int):
         (a, b) = (b, a - opr.multiply(q, b))
         (x, lastx) = (lastx - opr.multiply(q, x), x)
         (y, lasty) = (lasty - opr.multiply(q, y), y)
+
+    # while b != 0:
+    #   q = opr.div(a, b)
+    #   (a, b) = (b, a - opr.multiply(q, b))
+    #   (x, lastx) = (lastx - opr.multiply(q, x), x)
+    #   (y, lasty) = (lasty - opr.multiply(q, y), y)
     return (lastx, lasty, a)
 
 # ax ≡ 1 (mod m)
@@ -195,6 +203,15 @@ if __name__ == '__main__':
   # generate secret key and public key
   d = 0x49be667ef9dcbbac55b06295ce870b0702900cdb2dce28d959f2815b16f81798
   d_bit_seq = bin(d)[2:]
+  t = len(d_bit_seq)
+  w = d_bit_seq.count("1")
+  ### normal distribution
+  alpha = (12*math.log(2)*math.log(2**BIT))/(math.pi**2) + 1.467
+  iteration = (t+w-1)
+
+  mu_mult = (t-1)*(3*alpha+6)+w*(3*alpha+3)
+  sigma = 9.5*3*math.sqrt(iteration)
+
   PUBLIC_KEY = Binary(d, GP)
 
   correct = 0
@@ -220,23 +237,39 @@ if __name__ == '__main__':
   print("correctness: {0}/{1}".format(correct, LOOP))
   print("GP = {0}".format(vars(GP)))
   print("PUBLIC_KEY = {0}".format(vars(PUBLIC_KEY)))
-  print('d = {0} ({1}bits)'.format(d, len(d_bit_seq)))
-  print("Hamming weight of d: {0}".format(d_bit_seq.count("1")))
-  print("Average multiplication = {0}".format(all_mult/LOOP))
-  print("Average reduction = {0}".format(all_reduction/LOOP))
+  print('d = {0} ({1}bits)'.format(d, t))
+  print("Hamming weight of d: {0}".format(w))
+  print("alpha: {0}".format(alpha))
+  print("Average of egcd count (experimentally) = {0}".format(sum(egcd_count_list)/len(egcd_count_list)))
+  print("Average multiplication (theoretical) = {0}".format(mu_mult))
+  print("Average multiplication (experimentally) = {0}".format(all_mult/LOOP))
+  print("Distributed of multiplication (theoretical) = {0}".format(sigma))
+  print("Average reduction (experimentally) = {0}".format(all_reduction/LOOP))
 
+
+  # ====================
   # display histgram
-  plt.hist(mult_list, bins=len(set(mult_list)))
+  # ====================
+
+  # multiplication (172000 ~ 176000)
+  plt.hist(mult_list, bins=len(set(mult_list)), density=True)
+  X = np.arange(mu_mult-sigma*5, mu_mult+sigma*5, 1)
+  Y = norm.pdf(X, loc=mu_mult, scale=sigma)
+  plt.plot(X, Y, 'r-')
+  plt.savefig("ec_elgamal_mult.png")
   plt.show()
+
+  # reduction (57600 ~ 59200)
   plt.hist(reduction_list, bins=len(set(reduction_list)))
+  plt.savefig("ec_elgamal_reduction.png")
   plt.show()
-  plt.hist(egcd_count_list, bins=len(set(egcd_count_list)))
-  # normal distribution
-  mu = (12*math.log(2)*math.log(2**255))/(math.pi**2) + 1.467
-  sigma = 9.5
+
+  # egcd_count
+  plt.hist(egcd_count_list, bins=len(set(egcd_count_list)), density=True)
   X = np.arange(100, 200, 0.1)
-  Y = norm.pdf(X, loc=mu, scale=sigma)
-  plt.plot(X, Y*len(egcd_count_list), 'r-')
+  Y = norm.pdf(X, loc=alpha, scale=9.5)
+  plt.plot(X, Y, 'r-')
+  plt.savefig("ec_elgamal_egcd_count.png")
   plt.show()
 
 
