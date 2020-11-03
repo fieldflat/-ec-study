@@ -10,6 +10,8 @@ import inspect
 from tqdm import tqdm
 import numpy as np
 from scipy.stats import norm
+import statistics as stat
+import scipy.stats as stats
 import matplotlib.pyplot as plt
 
 # =============================
@@ -21,16 +23,17 @@ BIT = 256
 A = 0x0000000000000000000000000000000000000000000000000000000000000000
 B = 0x0000000000000000000000000000000000000000000000000000000000000007
 N = 100
+P_DOUBLE = 5/6
+P_ADD = 2/3
 LOOP = 1000
 
 # =============================
 # variables for analysis
 # =============================
-all_mult = 0
-all_reduction = 0
 egcd_count_list = []
 mult_list = []
 reduction_list = []
+total_list = []
 
 # =============================
 # classes
@@ -79,38 +82,38 @@ opr = Operation()
 # Extended Euclidean algorithm
 ### Measured value: 大体453.2496669540005
 def egcd(a: int, b: int):
-    global opr, egcd_count_list
-    (x, lastx) = (0, 1)
-    (y, lasty) = (1, 0)
+  global opr, egcd_count_list
+  (x, lastx) = (0, 1)
+  (y, lasty) = (1, 0)
 
-    egcd_count = 0
-    if calledFromElGamalDec():
-      while b != 0:
-        egcd_count += 1
-        q = opr.div(a, b)
-        (a, b) = (b, a - opr.multiply(q, b))
-        (x, lastx) = (lastx - opr.multiply(q, x), x)
-        (y, lasty) = (lasty - opr.multiply(q, y), y)
-      egcd_count_list.append(egcd_count)
-    else:
-      while b != 0:
-        q = opr.div(a, b)
-        (a, b) = (b, a - opr.multiply(q, b))
-        (x, lastx) = (lastx - opr.multiply(q, x), x)
-        (y, lasty) = (lasty - opr.multiply(q, y), y)
+  egcd_count = 0
+  if calledFromElGamalDec():
+    while b != 0:
+      egcd_count += 1
+      q = opr.div(a, b)
+      (a, b) = (b, a - opr.multiply(q, b))
+      (x, lastx) = (lastx - opr.multiply(q, x), x)
+      (y, lasty) = (lasty - opr.multiply(q, y), y)
+    egcd_count_list.append(egcd_count)
+  else:
+    while b != 0:
+      q = opr.div(a, b)
+      (a, b) = (b, a - opr.multiply(q, b))
+      (x, lastx) = (lastx - opr.multiply(q, x), x)
+      (y, lasty) = (lasty - opr.multiply(q, y), y)
 
-    # while b != 0:
-    #   q = opr.div(a, b)
-    #   (a, b) = (b, a - opr.multiply(q, b))
-    #   (x, lastx) = (lastx - opr.multiply(q, x), x)
-    #   (y, lasty) = (lasty - opr.multiply(q, y), y)
-    return (lastx, lasty, a)
+  # while b != 0:
+  #   q = opr.div(a, b)
+  #   (a, b) = (b, a - opr.multiply(q, b))
+  #   (x, lastx) = (lastx - opr.multiply(q, x), x)
+  #   (y, lasty) = (lasty - opr.multiply(q, y), y)
+  return (lastx, lasty, a)
 
 # ax ≡ 1 (mod m)
 def modinv(a: int, m: int):
-    global opr
-    (inv, _, _) = egcd(a, m)
-    return opr.modulo(inv, m) # not perform reductions.
+  global opr
+  (inv, _, _) = egcd(a, m)
+  return opr.modulo(inv, m) # not perform reductions.
 
 # return true if called from ElGamalDec
 def calledFromElGamalDec():
@@ -205,12 +208,18 @@ if __name__ == '__main__':
   d_bit_seq = bin(d)[2:]
   t = len(d_bit_seq)
   w = d_bit_seq.count("1")
-  ### normal distribution
+
+  # analysis of distributions
   alpha = (12*math.log(2)*math.log(2**BIT))/(math.pi**2) + 1.467
   iteration = (t+w-1)
-
+  root = 9.5
   mu_mult = (t-1)*(3*alpha+6)+w*(3*alpha+3)
-  sigma = 9.5*3*math.sqrt(iteration)
+  mu_reduction = alpha*(t+w-1)+3*(t-1)*P_DOUBLE+3*w*P_ADD
+  sigma_mult = 3*root*math.sqrt(iteration)
+  sigma_reduction = root*math.sqrt(iteration)
+  mu = mu_mult + mu_reduction
+  sigma = sigma_mult + sigma_reduction
+  # sigma = math.sqrt(sigma_mult**2 + sigma_reduction**2)
 
   PUBLIC_KEY = Binary(d, GP)
 
@@ -224,10 +233,9 @@ if __name__ == '__main__':
     opr.mult = 0
     opr.reduction = 0
     DecM = ElGamalDec(C1, C2, d)
-    all_mult += opr.mult
-    all_reduction += opr.reduction
     mult_list.append(opr.mult)
     reduction_list.append(opr.reduction)
+    total_list.append(opr.mult+opr.reduction)
 
     decPlaintext = PointToMsg(DecM)
     if plaintext == decPlaintext:
@@ -239,12 +247,34 @@ if __name__ == '__main__':
   print("PUBLIC_KEY = {0}".format(vars(PUBLIC_KEY)))
   print('d = {0} ({1}bits)'.format(d, t))
   print("Hamming weight of d: {0}".format(w))
-  print("alpha: {0}".format(alpha))
-  print("Average of egcd count (experimentally) = {0}".format(sum(egcd_count_list)/len(egcd_count_list)))
+  print("=================== egcd ==================")
+  print("Average of egcd count (theoretical, namely alpha): {0}".format(alpha))
+  print("Average of egcd count (experimental) = {0}".format(stat.mean(egcd_count_list)))
+  print("================== multiplication ===================")
   print("Average multiplication (theoretical) = {0}".format(mu_mult))
-  print("Average multiplication (experimentally) = {0}".format(all_mult/LOOP))
-  print("Distributed of multiplication (theoretical) = {0}".format(sigma))
-  print("Average reduction (experimentally) = {0}".format(all_reduction/LOOP))
+  print("Average multiplication (experimental) = {0}".format(stat.mean(mult_list)))
+  print("Standard deviation of multiplication (theoretical) = {0}".format(sigma_mult))
+  print("Standard deviation of multiplication (experimental) = {0}".format(stat.pstdev(mult_list)))
+  print("Variance value of multiplication (theoretical) = {0}".format(sigma_mult**2))
+  print("Variance value of multiplication (experimental) = {0}".format(stat.pvariance(mult_list)))
+  print("================== reduction ===================")
+  print("Average reduction (theoretical) = {0}".format(mu_reduction))
+  print("Average reduction (experimental) = {0}".format(stat.mean(reduction_list)))
+  print("Standard deviation of reduction (theoretical) = {0}".format(sigma_reduction))
+  print("Standard deviation of reduction (experimental) = {0}".format(stat.pstdev(reduction_list)))
+  print("Variance value of reduction (theoretical) = {0}".format(sigma_reduction**2))
+  print("Variance value of reduction (experimental) = {0}".format(stat.pvariance(reduction_list)))
+  print("================= total count ====================")
+  print("Average computation (theoretical) = {0}".format(mu))
+  print("Average computation (experimental) = {0}".format(stat.mean(total_list)))
+  print("Standard deviation of computation (theoretical) = {0}".format(sigma))
+  print("Standard deviation of computation (experimental) = {0}".format(stat.pstdev(total_list)))
+  print("Variance value of computation (theoretical) = {0}".format(sigma**2))
+  print("Variance value of computation (experimental) = {0}".format(stat.pvariance(total_list)))
+  print("================== check wheter normal distribution (p > 0.05) ===================")
+  print("multiply: {0}".format(stats.shapiro(mult_list)))
+  print("reduction: {0}".format(stats.shapiro(reduction_list)))
+  print("total count: {0}".format(stats.shapiro(total_list)))
 
 
   # ====================
@@ -253,22 +283,50 @@ if __name__ == '__main__':
 
   # multiplication (172000 ~ 176000)
   plt.hist(mult_list, bins=len(set(mult_list)), density=True)
-  X = np.arange(mu_mult-sigma*5, mu_mult+sigma*5, 1)
-  Y = norm.pdf(X, loc=mu_mult, scale=sigma)
+  X = np.arange(mu_mult-sigma_mult*5, mu_mult+sigma_mult*5, 1)
+  Y = norm.pdf(X, loc=mu_mult, scale=sigma_mult)
   plt.plot(X, Y, 'r-')
+  plt.title("multiplication ($\mu = {0} \ \ \sigma = {1}$)".format(round(mu_mult, 2), round(sigma_mult, 2)))
   plt.savefig("ec_elgamal_mult.png")
   plt.show()
 
   # reduction (57600 ~ 59200)
-  plt.hist(reduction_list, bins=len(set(reduction_list)))
+  plt.hist(reduction_list, bins=len(set(reduction_list)), density=True)
+  X = np.arange(mu_reduction-sigma_reduction*5, mu_reduction+sigma_reduction*5, 1)
+  Y = norm.pdf(X, loc=mu_reduction, scale=sigma_reduction)
+  plt.plot(X, Y, 'b-')
+  plt.title("reduction ($\mu = {0} \ \ \sigma = {1}$)".format(
+      round(mu_reduction, 2), round(sigma_reduction, 2)))
   plt.savefig("ec_elgamal_reduction.png")
+  plt.show()
+
+  # total computation
+  # mu = stat.mean(total_list)
+  # sigma = stat.pstdev(total_list)
+  plt.hist(total_list, bins=len(set(total_list)), density=True)
+  X = np.arange(mu-sigma*5, mu+sigma*5, 1)
+  Y = norm.pdf(X, loc=mu, scale=sigma)
+  plt.plot(X, Y, 'b-')
+  plt.title("reduction ($\mu = {0} \ \  \sigma = {1}$)".format(round(mu, 2), round(sigma, 2)))
+  plt.savefig("ec_elgamal_total.png")
+  plt.show()
+
+  # total computation
+  mu = stat.mean(total_list)
+  sigma = stat.pstdev(total_list)
+  plt.hist(total_list, bins=len(set(total_list)), density=True)
+  X = np.arange(mu-sigma*5, mu+sigma*5, 1)
+  Y = norm.pdf(X, loc=mu, scale=sigma)
+  plt.plot(X, Y, 'b-')
+  plt.savefig("ec_elgamal_total_sum.png")
   plt.show()
 
   # egcd_count
   plt.hist(egcd_count_list, bins=len(set(egcd_count_list)), density=True)
   X = np.arange(100, 200, 0.1)
-  Y = norm.pdf(X, loc=alpha, scale=9.5)
+  Y = norm.pdf(X, loc=alpha, scale=root)
   plt.plot(X, Y, 'r-')
+  plt.title("egcd iteration ($\mu = {0} \ \ \sigma = {1}$)".format(round(alpha, 2), round(root, 2)))
   plt.savefig("ec_elgamal_egcd_count.png")
   plt.show()
 
