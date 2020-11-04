@@ -25,7 +25,7 @@ B = 0x0000000000000000000000000000000000000000000000000000000000000007
 N = 100
 P_DOUBLE = 5/6
 P_ADD = 2/3
-LOOP = 1000
+LOOP = 500
 
 # =============================
 # variables for analysis
@@ -204,7 +204,7 @@ if __name__ == '__main__':
   GP = MsgToPoint(0xffffffff222ffff9dcbbac55eeefffffffff)
 
   # generate secret key and public key
-  d = 0x49be667ef9dcbbac55b06295ce870b0702900cdb2dce28d959f2815b16f81798
+  d = 0x49be667ef9dcbbac55b06295ce870b0702900cdb2dce28d959f9425b16f81798
   d_bit_seq = bin(d)[2:]
   t = len(d_bit_seq)
   w = d_bit_seq.count("1")
@@ -250,6 +250,10 @@ if __name__ == '__main__':
   print("=================== egcd ==================")
   print("Average of egcd count (theoretical, namely alpha): {0}".format(alpha))
   print("Average of egcd count (experimental) = {0}".format(stat.mean(egcd_count_list)))
+  print("Standard deviation of egcd count (theoretical, namely alpha): {0}".format(root))
+  print("Standard deviation of egcd count (experimental) = {0}".format(stat.pstdev(egcd_count_list)))
+  print("Variance value of egcd count (theoretical, namely alpha): {0}".format(root**2))
+  print("Variance value of egcd count (experimental) = {0}".format(stat.pvariance(egcd_count_list)))
   print("================== multiplication ===================")
   print("Average multiplication (theoretical) = {0}".format(mu_mult))
   print("Average multiplication (experimental) = {0}".format(stat.mean(mult_list)))
@@ -271,10 +275,17 @@ if __name__ == '__main__':
   print("Standard deviation of computation (experimental) = {0}".format(stat.pstdev(total_list)))
   print("Variance value of computation (theoretical) = {0}".format(sigma**2))
   print("Variance value of computation (experimental) = {0}".format(stat.pvariance(total_list)))
-  print("================== check wheter normal distribution (p > 0.05) ===================")
-  print("multiply: {0}".format(stats.shapiro(mult_list)))
-  print("reduction: {0}".format(stats.shapiro(reduction_list)))
-  print("total count: {0}".format(stats.shapiro(total_list)))
+  print("================== test wheter normal distribution (p > 0.05) ===================")
+  if LOOP <= 5000:
+    print("Shapiro-Wilk test")
+    print("multiply: {0}".format(stats.shapiro(mult_list)))
+    print("reduction: {0}".format(stats.shapiro(reduction_list)))
+    print("total count: {0}".format(stats.shapiro(total_list)))
+  else:
+    print("Kolmogorov–Smirnov test")
+    print("multiply: {0}".format(stats.kstest(mult_list, "norm")))
+    print("reduction: {0}".format(stats.kstest(reduction_list, "norm")))
+    print("total count: {0}".format(stats.kstest(total_list, "norm")))
 
 
   # ====================
@@ -306,8 +317,8 @@ if __name__ == '__main__':
   plt.hist(total_list, bins=len(set(total_list)), density=True)
   X = np.arange(mu-sigma*5, mu+sigma*5, 1)
   Y = norm.pdf(X, loc=mu, scale=sigma)
-  plt.plot(X, Y, 'b-')
-  plt.title("reduction ($\mu = {0} \ \  \sigma = {1}$)".format(round(mu, 2), round(sigma, 2)))
+  plt.plot(X, Y, 'g-')
+  plt.title("total ($\mu = {0} \ \  \sigma = {1}$)".format(round(mu, 2), round(sigma, 2)))
   plt.savefig("ec_elgamal_total.png")
   plt.show()
 
@@ -317,7 +328,7 @@ if __name__ == '__main__':
   plt.hist(total_list, bins=len(set(total_list)), density=True)
   X = np.arange(mu-sigma*5, mu+sigma*5, 1)
   Y = norm.pdf(X, loc=mu, scale=sigma)
-  plt.plot(X, Y, 'b-')
+  plt.plot(X, Y, 'g-')
   plt.savefig("ec_elgamal_total_sum.png")
   plt.show()
 
