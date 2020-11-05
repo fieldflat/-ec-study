@@ -13,19 +13,50 @@ from scipy.stats import norm
 import statistics as stat
 import scipy.stats as stats
 import matplotlib.pyplot as plt
+import yaml
+from argparse import ArgumentParser
+
+# =============================
+# option analysis
+# =============================
+def get_option(ecparams, loop, tlength, weight):
+  argparser = ArgumentParser()
+  argparser.add_argument('-ecp', '--ecparams', type=str,
+                          default=ecparams,
+                          help='Specify type of ec-parameter')
+  argparser.add_argument('-l', '--loop', type=int,
+                          default=loop,
+                          help='Specify number of loops')
+  argparser.add_argument('-t', '--tlength', type=int,
+                          default=tlength,
+                          help='Specify number of t-length')
+  argparser.add_argument('-w', '--weight', type=int,
+                          default=weight,
+                          help='Specify number of hamming weight')
+  return argparser.parse_args()
+
+
+# =============================
+# yaml import
+# =============================
+args = get_option('config1', 1000, 256, 128)
+with open('./parameters/'+args.ecparams+'.yml', 'r') as yml:
+  config = yaml.load(yml, Loader=yaml.FullLoader)
 
 # =============================
 # global constants
 # =============================
-INF = -1
-MODULO_P = 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f # 256bit
-BIT = 256
-A = 0x0000000000000000000000000000000000000000000000000000000000000000
-B = 0x0000000000000000000000000000000000000000000000000000000000000007
-N = 100
+INF = 999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999
+MODULO_P = int(config['ec_params']['modulo_p'])
+A = int(config['ec_params']['a'])
+B = int(config['ec_params']['b'])
+BIT = len(bin(MODULO_P)[2:])
+N = 100 # N is used when convert Message to Point, and Point to Message
 P_DOUBLE = 5/6
 P_ADD = 2/3
-LOOP = 500
+LOOP = args.loop
+ALPHA = (12*math.log(2)*math.log(2**BIT))/(math.pi**2) + 1.467
+SIGMA_BASE = config['ec_params']['sigma_base'] # depend on MODULO_P
 
 # =============================
 # variables for analysis
@@ -115,6 +146,14 @@ def modinv(a: int, m: int):
   (inv, _, _) = egcd(a, m)
   return opr.modulo(inv, m) # not perform reductions.
 
+def generate_d(t: int, w: int):
+  # generate a list with the correct number of 1's
+  x = [1]*(w-1)+[0]*(t-w)
+  random.shuffle(x)
+  x = [1]+x
+  # convert back to a number
+  return int(''.join(map(str, x)), 2)
+
 # return true if called from ElGamalDec
 def calledFromElGamalDec():
   stack = inspect.stack()
@@ -201,25 +240,27 @@ def ElGamalDec(C1: Point, C2: Point, d: int):
 # main function
 # =============================
 if __name__ == '__main__':
-  GP = MsgToPoint(0xffffffff222ffff9dcbbac55eeefffffffff)
+  GP = MsgToPoint(generate_d(args.tlength-1, args.weight))
 
   # generate secret key and public key
-  d = 0x49be667ef9dcbbac55b06295ce870b0702900cdb2dce28d959f9425b16f81798
+  # d = 0x49be667ef9dcbbac55b06295ce870b0702900cdb2dce28d959f9425b16f81798
+  d = generate_d(args.tlength, args.weight)
   d_bit_seq = bin(d)[2:]
   t = len(d_bit_seq)
   w = d_bit_seq.count("1")
 
+  if BIT < args.tlength:
+    print('tlength must be least than BIT(length of MODULO_P)')
+    sys.exit()
+
   # analysis of distributions
-  alpha = (12*math.log(2)*math.log(2**BIT))/(math.pi**2) + 1.467
   iteration = (t+w-1)
-  root = 9.5
-  mu_mult = (t-1)*(3*alpha+6)+w*(3*alpha+3)
-  mu_reduction = alpha*(t+w-1)+3*(t-1)*P_DOUBLE+3*w*P_ADD
-  sigma_mult = 3*root*math.sqrt(iteration)
-  sigma_reduction = root*math.sqrt(iteration)
+  mu_mult = (t-1)*(3*ALPHA+6)+w*(3*ALPHA+3)
+  mu_reduction = ALPHA*(t+w-1)+3*(t-1)*P_DOUBLE+3*w*P_ADD
+  sigma_mult = 3*SIGMA_BASE*math.sqrt(iteration)
+  sigma_reduction = SIGMA_BASE*math.sqrt(iteration)
   mu = mu_mult + mu_reduction
   sigma = sigma_mult + sigma_reduction
-  # sigma = math.sqrt(sigma_mult**2 + sigma_reduction**2)
 
   PUBLIC_KEY = Binary(d, GP)
 
@@ -243,16 +284,20 @@ if __name__ == '__main__':
 
   print("========== Result ==========")
   print("correctness: {0}/{1}".format(correct, LOOP))
+  print("=================== global constants ==================")
   print("GP = {0}".format(vars(GP)))
   print("PUBLIC_KEY = {0}".format(vars(PUBLIC_KEY)))
   print('d = {0} ({1}bits)'.format(d, t))
   print("Hamming weight of d: {0}".format(w))
+  print("MODULO_P: {0} ({1} bits)".format(MODULO_P, BIT))
+  print("A: {0}".format(A))
+  print("B: {0}".format(B))
   print("=================== egcd ==================")
-  print("Average of egcd count (theoretical, namely alpha): {0}".format(alpha))
+  print("Average of egcd count (theoretical, namely ALPHA): {0}".format(ALPHA))
   print("Average of egcd count (experimental) = {0}".format(stat.mean(egcd_count_list)))
-  print("Standard deviation of egcd count (theoretical, namely alpha): {0}".format(root))
+  print("Standard deviation of egcd count (theoretical, namely SIGMA_BASE): {0}".format(SIGMA_BASE))
   print("Standard deviation of egcd count (experimental) = {0}".format(stat.pstdev(egcd_count_list)))
-  print("Variance value of egcd count (theoretical, namely alpha): {0}".format(root**2))
+  print("Variance value of egcd count (theoretical): {0}".format(SIGMA_BASE**2))
   print("Variance value of egcd count (experimental) = {0}".format(stat.pvariance(egcd_count_list)))
   print("================== multiplication ===================")
   print("Average multiplication (theoretical) = {0}".format(mu_mult))
@@ -275,7 +320,7 @@ if __name__ == '__main__':
   print("Standard deviation of computation (experimental) = {0}".format(stat.pstdev(total_list)))
   print("Variance value of computation (theoretical) = {0}".format(sigma**2))
   print("Variance value of computation (experimental) = {0}".format(stat.pvariance(total_list)))
-  print("================== test wheter normal distribution (p > 0.05) ===================")
+  print("================== test whether normal distribution (p > 0.05) ===================")
   if LOOP <= 5000:
     print("Shapiro-Wilk test")
     print("multiply: {0}".format(stats.shapiro(mult_list)))
@@ -297,8 +342,8 @@ if __name__ == '__main__':
   X = np.arange(mu_mult-sigma_mult*5, mu_mult+sigma_mult*5, 1)
   Y = norm.pdf(X, loc=mu_mult, scale=sigma_mult)
   plt.plot(X, Y, 'r-')
-  plt.title("multiplication ($\mu = {0} \ \ \sigma = {1}$)".format(round(mu_mult, 2), round(sigma_mult, 2)))
-  plt.savefig("ec_elgamal_mult.png")
+  plt.title("Multiplication ($\mu = {0} \ \ \sigma = {1}$)".format(round(mu_mult, 2), round(sigma_mult, 2)))
+  plt.savefig("picture/ec_elgamal_mult.png")
   plt.show()
 
   # reduction (57600 ~ 59200)
@@ -306,9 +351,9 @@ if __name__ == '__main__':
   X = np.arange(mu_reduction-sigma_reduction*5, mu_reduction+sigma_reduction*5, 1)
   Y = norm.pdf(X, loc=mu_reduction, scale=sigma_reduction)
   plt.plot(X, Y, 'b-')
-  plt.title("reduction ($\mu = {0} \ \ \sigma = {1}$)".format(
+  plt.title("Reduction ($\mu = {0} \ \ \sigma = {1}$)".format(
       round(mu_reduction, 2), round(sigma_reduction, 2)))
-  plt.savefig("ec_elgamal_reduction.png")
+  plt.savefig("picture/ec_elgamal_reduction.png")
   plt.show()
 
   # total computation
@@ -318,8 +363,8 @@ if __name__ == '__main__':
   X = np.arange(mu-sigma*5, mu+sigma*5, 1)
   Y = norm.pdf(X, loc=mu, scale=sigma)
   plt.plot(X, Y, 'g-')
-  plt.title("total ($\mu = {0} \ \  \sigma = {1}$)".format(round(mu, 2), round(sigma, 2)))
-  plt.savefig("ec_elgamal_total.png")
+  plt.title("Total ($\mu = {0} \ \  \sigma = {1}$)".format(round(mu, 2), round(sigma, 2)))
+  plt.savefig("picture/ec_elgamal_total.png")
   plt.show()
 
   # total computation
@@ -329,16 +374,14 @@ if __name__ == '__main__':
   X = np.arange(mu-sigma*5, mu+sigma*5, 1)
   Y = norm.pdf(X, loc=mu, scale=sigma)
   plt.plot(X, Y, 'g-')
-  plt.savefig("ec_elgamal_total_sum.png")
+  plt.savefig("picture/ec_elgamal_total_sum.png")
   plt.show()
 
   # egcd_count
   plt.hist(egcd_count_list, bins=len(set(egcd_count_list)), density=True)
-  X = np.arange(100, 200, 0.1)
-  Y = norm.pdf(X, loc=alpha, scale=root)
+  X = np.arange(60, 200, 0.1)
+  Y = norm.pdf(X, loc=ALPHA, scale=SIGMA_BASE)
   plt.plot(X, Y, 'r-')
-  plt.title("egcd iteration ($\mu = {0} \ \ \sigma = {1}$)".format(round(alpha, 2), round(root, 2)))
-  plt.savefig("ec_elgamal_egcd_count.png")
+  plt.title("Egcd Iteration ($\mu = {0} \ \ \sigma = {1}$)".format(round(ALPHA, 2), round(SIGMA_BASE, 2)))
+  plt.savefig("picture/ec_elgamal_egcd_count.png")
   plt.show()
-
-
