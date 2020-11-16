@@ -52,11 +52,14 @@ A = int(config['ec_params']['a'])
 B = int(config['ec_params']['b'])
 BIT = len(bin(MODULO_P)[2:])
 N = 100 # N is used when convert Message to Point, and Point to Message
-P_DOUBLE = 5/6
-P_ADD = 2/3
+P_DOUBLE = 1/2
+P_ADD = 1/2
 LOOP = args.loop
 ALPHA = (12*math.log(2)*math.log(2**BIT))/(math.pi**2) + 1.467
-SIGMA_BASE = config['ec_params']['sigma_base'] # depend on MODULO_P
+C1 = 0.512
+SIGMA_BASE = math.sqrt(C1*math.log(2**BIT))
+print(SIGMA_BASE)
+
 
 # =============================
 # variables for analysis
@@ -124,14 +127,14 @@ def egcd(a: int, b: int):
       q = opr.div(a, b)
       (a, b) = (b, a - opr.multiply(q, b))
       (x, lastx) = (lastx - opr.multiply(q, x), x)
-      (y, lasty) = (lasty - opr.multiply(q, y), y)
+      # (y, lasty) = (lasty - opr.multiply(q, y), y)
     egcd_count_list.append(egcd_count)
   else:
     while b != 0:
       q = opr.div(a, b)
       (a, b) = (b, a - opr.multiply(q, b))
       (x, lastx) = (lastx - opr.multiply(q, x), x)
-      (y, lasty) = (lasty - opr.multiply(q, y), y)
+      # (y, lasty) = (lasty - opr.multiply(q, y), y)
 
   # while b != 0:
   #   q = opr.div(a, b)
@@ -178,7 +181,7 @@ def PointAdd(P: Point, Q: Point):
   elif Q.is_inf():
     return P
   elif P.x == Q.x:
-    if ((P.y + Q.y) == MODULO_P):
+    if ((P.y + Q.y) == 0):
       return Point(INF, INF)
     else:
       tmp1 = opr.multiply(opr.multiply(3, P.x), P.x) + A
@@ -255,12 +258,15 @@ if __name__ == '__main__':
 
   # analysis of distributions
   iteration = (t+w-1)
-  mu_mult = (t-1)*(3*ALPHA+6)+w*(3*ALPHA+3)
-  mu_reduction = ALPHA*(t+w-1)+3*(t-1)*P_DOUBLE+3*w*P_ADD
-  sigma_mult = 3*SIGMA_BASE*math.sqrt(iteration)
-  sigma_reduction = SIGMA_BASE*math.sqrt(iteration)
+  mu_mult = (t-1)*(2*ALPHA+6)+w*(2*ALPHA+3)
+  mu_reduction = ALPHA*iteration+(t-1)*(2+P_DOUBLE)+w*(1+2*P_ADD)
   mu = mu_mult + mu_reduction
-  sigma = sigma_mult + sigma_reduction
+  # sigma_reduction = SIGMA_BASE*math.sqrt(iteration)
+  # sigma_reduction = math.sqrt((SIGMA_BASE**2)*iteration + 3*(t-1)*P_DOUBLE*(1-P_DOUBLE) + 3*w*P_ADD*(1-P_ADD))
+  # sigma = sigma_mult + sigma_reduction
+  sigma_mult = 2*SIGMA_BASE*math.sqrt(iteration)
+  sigma_reduction = math.sqrt((SIGMA_BASE**2)*iteration + (t-1)*P_DOUBLE*(1-P_DOUBLE) + 2*w*P_ADD*(1-P_ADD))
+  sigma = math.sqrt(9*(SIGMA_BASE**2)*(iteration) + (t-1)*P_DOUBLE*(1-P_DOUBLE) + 2*w*P_ADD*(1-P_ADD))
 
   PUBLIC_KEY = Binary(d, GP)
 
@@ -285,6 +291,7 @@ if __name__ == '__main__':
   print("========== Result ==========")
   print("correctness: {0}/{1}".format(correct, LOOP))
   print("=================== global constants ==================")
+  print("config type: {0}".format(args.ecparams))
   print("GP = {0}".format(vars(GP)))
   print("PUBLIC_KEY = {0}".format(vars(PUBLIC_KEY)))
   print('d = {0} ({1}bits)'.format(d, t))
@@ -379,7 +386,7 @@ if __name__ == '__main__':
 
   # egcd_count
   plt.hist(egcd_count_list, bins=len(set(egcd_count_list)), density=True)
-  X = np.arange(60, 200, 0.1)
+  X = np.arange(ALPHA-5*SIGMA_BASE, ALPHA+5*SIGMA_BASE, 1)
   Y = norm.pdf(X, loc=ALPHA, scale=SIGMA_BASE)
   plt.plot(X, Y, 'r-')
   plt.title("Egcd Iteration ($\mu = {0} \ \ \sigma = {1}$)".format(round(ALPHA, 2), round(SIGMA_BASE, 2)))
