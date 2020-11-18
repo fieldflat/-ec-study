@@ -15,6 +15,7 @@ import scipy.stats as stats
 import matplotlib.pyplot as plt
 import yaml
 from argparse import ArgumentParser
+import statsmodels.api as sm
 
 # =============================
 # option analysis
@@ -52,10 +53,11 @@ A = int(config['ec_params']['a'])
 B = int(config['ec_params']['b'])
 BIT = len(bin(MODULO_P)[2:])
 N = 100 # N is used when convert Message to Point, and Point to Message
-P_DOUBLE = 1/2
-P_ADD = 1/2
+# P_DOUBLE = 1/2
+# P_ADD = 1/2
 LOOP = args.loop
 ALPHA = (12*math.log(2)*math.log(2**BIT))/(math.pi**2) + 1.467
+# ALPHA = 112.51659685863875
 C1 = 0.512
 SIGMA_BASE = math.sqrt(C1*math.log(2**BIT))
 print(SIGMA_BASE)
@@ -68,6 +70,8 @@ egcd_count_list = []
 mult_list = []
 reduction_list = []
 total_list = []
+check_list = {'ok': 0, 'ng': 0}
+
 
 # =============================
 # classes
@@ -98,7 +102,7 @@ class Operation:
     return x*y
   
   def modulo(self, x: int, y: int):
-    if x >= y:
+    if x >= y or x < 0:
       self.reduction += 1
     return x % y
   
@@ -118,8 +122,6 @@ opr = Operation()
 def egcd(a: int, b: int):
   global opr, egcd_count_list
   (x, lastx) = (0, 1)
-  (y, lasty) = (1, 0)
-
   egcd_count = 0
   if calledFromElGamalDec():
     while b != 0:
@@ -127,27 +129,23 @@ def egcd(a: int, b: int):
       q = opr.div(a, b)
       (a, b) = (b, a - opr.multiply(q, b))
       (x, lastx) = (lastx - opr.multiply(q, x), x)
-      # (y, lasty) = (lasty - opr.multiply(q, y), y)
     egcd_count_list.append(egcd_count)
   else:
     while b != 0:
       q = opr.div(a, b)
       (a, b) = (b, a - opr.multiply(q, b))
       (x, lastx) = (lastx - opr.multiply(q, x), x)
-      # (y, lasty) = (lasty - opr.multiply(q, y), y)
-
-  # while b != 0:
-  #   q = opr.div(a, b)
-  #   (a, b) = (b, a - opr.multiply(q, b))
-  #   (x, lastx) = (lastx - opr.multiply(q, x), x)
-  #   (y, lasty) = (lasty - opr.multiply(q, y), y)
-  return (lastx, lasty, a)
+  return (lastx, 0, a)
 
 # ax ≡ 1 (mod m)
 def modinv(a: int, m: int):
   global opr
   (inv, _, _) = egcd(a, m)
-  return opr.modulo(inv, m) # not perform reductions.
+  # if 0 <= inv and inv < MODULO_P:
+  #   inv_list['ok'] += 1
+  # else:
+  #   inv_list['ng'] += 1
+  return opr.modulo(inv, m)
 
 def generate_d(t: int, w: int):
   # generate a list with the correct number of 1's
@@ -181,18 +179,22 @@ def PointAdd(P: Point, Q: Point):
   elif Q.is_inf():
     return P
   elif P.x == Q.x:
-    if ((P.y + Q.y) == 0):
+    if ((P.y + Q.y) == MODULO_P):
       return Point(INF, INF)
     else:
-      tmp1 = opr.multiply(opr.multiply(3, P.x), P.x) + A
-      tmp2 = opr.multiply(2, P.y)
+      tmp1 = opr.modulo(opr.multiply(opr.multiply(3, P.x), P.x) + A, MODULO_P)
+      tmp2 = opr.modulo(opr.multiply(2, P.y), MODULO_P)
       inv_tmp2 = modinv(tmp2, MODULO_P)
       lmd = opr.modulo(opr.multiply(tmp1, inv_tmp2), MODULO_P) # perform reductions almost all. 
       x_3 = opr.modulo(opr.multiply(lmd, lmd) - P.x - Q.x, MODULO_P)  # perform reductions almost all. 
       y_3 = opr.modulo(opr.multiply(lmd, (P.x - x_3)) - P.y, MODULO_P)  # perform reductions with probability 1/2. 
   else:
-    tmp1 = (Q.y - P.y)
-    tmp2 = (Q.x - P.x)
+    tmp1 = opr.modulo((Q.y - P.y), MODULO_P)
+    tmp2 = opr.modulo((Q.x - P.x), MODULO_P)
+    # if 0 <= (Q.x - P.x) and (Q.x - P.x) < MODULO_P:
+    #   check_list['ng'] += 1
+    # else:
+    #   check_list['ok'] += 1
     inv_tmp2 = modinv(tmp2, MODULO_P)
     lmd = opr.modulo(opr.multiply(tmp1, inv_tmp2), MODULO_P) # perform reductions with probability 1/2. 
     x_3 = opr.modulo(opr.multiply(lmd, lmd) - P.x - Q.x, MODULO_P) # perform reductions almost all. 
@@ -203,8 +205,8 @@ def PointAdd(P: Point, Q: Point):
 # Q = dP
 def Binary(d: int, P: Point):
   global opr
-  Q = Point(INF, INF)
-  d_bit_seq = bin(d)[2:]
+  Q = P
+  d_bit_seq = bin(d)[3:]
   for i in d_bit_seq:
     Q = PointAdd(Q, Q)  # measured value (multiplication): 457.4243529411765
     if int(i) == 1:
@@ -244,6 +246,7 @@ def ElGamalDec(C1: Point, C2: Point, d: int):
 # =============================
 if __name__ == '__main__':
   GP = MsgToPoint(generate_d(args.tlength-1, args.weight))
+  # GP = Point(x=0x6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f413945d898c296, y=0x4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5)
 
   # generate secret key and public key
   # d = 0x49be667ef9dcbbac55b06295ce870b0702900cdb2dce28d959f9425b16f81798
@@ -255,18 +258,6 @@ if __name__ == '__main__':
   if BIT < args.tlength:
     print('tlength must be least than BIT(length of MODULO_P)')
     sys.exit()
-
-  # analysis of distributions
-  iteration = (t+w-1)
-  mu_mult = (t-1)*(2*ALPHA+6)+w*(2*ALPHA+3)
-  mu_reduction = ALPHA*iteration+(t-1)*(2+P_DOUBLE)+w*(1+2*P_ADD)
-  mu = mu_mult + mu_reduction
-  # sigma_reduction = SIGMA_BASE*math.sqrt(iteration)
-  # sigma_reduction = math.sqrt((SIGMA_BASE**2)*iteration + 3*(t-1)*P_DOUBLE*(1-P_DOUBLE) + 3*w*P_ADD*(1-P_ADD))
-  # sigma = sigma_mult + sigma_reduction
-  sigma_mult = 2*SIGMA_BASE*math.sqrt(iteration)
-  sigma_reduction = math.sqrt((SIGMA_BASE**2)*iteration + (t-1)*P_DOUBLE*(1-P_DOUBLE) + 2*w*P_ADD*(1-P_ADD))
-  sigma = math.sqrt(9*(SIGMA_BASE**2)*(iteration) + (t-1)*P_DOUBLE*(1-P_DOUBLE) + 2*w*P_ADD*(1-P_ADD))
 
   PUBLIC_KEY = Binary(d, GP)
 
@@ -287,6 +278,17 @@ if __name__ == '__main__':
     decPlaintext = PointToMsg(DecM)
     if plaintext == decPlaintext:
       correct += 1
+
+  # analysis of distributions
+  ALPHA = stat.mean(egcd_count_list)
+  SIGMA_BASE = stat.pstdev(egcd_count_list)
+  iteration = (t+w-1)
+  mu_mult = (t-1)*(2*ALPHA+6)+w*(2*ALPHA+3)
+  mu_reduction = (t-1)*(ALPHA+5) + w*(ALPHA+9/2)
+  mu = mu_mult + mu_reduction
+  sigma_mult = 2*SIGMA_BASE*math.sqrt(iteration)
+  sigma_reduction = math.sqrt((SIGMA_BASE**2)*iteration)
+  sigma = math.sqrt(9*(SIGMA_BASE**2)*(iteration))
 
   print("========== Result ==========")
   print("correctness: {0}/{1}".format(correct, LOOP))
@@ -335,10 +337,12 @@ if __name__ == '__main__':
     print("total count: {0}".format(stats.shapiro(total_list)))
   else:
     print("Kolmogorov–Smirnov test")
-    print("multiply: {0}".format(stats.kstest(mult_list, "norm")))
-    print("reduction: {0}".format(stats.kstest(reduction_list, "norm")))
-    print("total count: {0}".format(stats.kstest(total_list, "norm")))
+    print("multiply: {0}".format(stats.kstest(
+        mult_list, "norm", args=(mu_mult, sigma_mult))))
+    print("reduction: {0}".format(stats.kstest(reduction_list, "norm", args=(mu_reduction, sigma_reduction))))
+    print("total count: {0}".format(stats.kstest(total_list, "norm", args=(mu, sigma))))
 
+  print('check_list: {0}'.format(check_list))
 
   # ====================
   # display histgram
