@@ -52,15 +52,15 @@ MODULO_P = int(config['ec_params']['modulo_p'])
 A = int(config['ec_params']['a'])
 B = int(config['ec_params']['b'])
 BIT = len(bin(MODULO_P)[2:])
-N = 100 # N is used when convert Message to Point, and Point to Message
-# P_DOUBLE = 1/2
-# P_ADD = 1/2
+N = 10000 # N is used when convert Message to Point, and Point to Message
 LOOP = args.loop
-ALPHA = (12*math.log(2)*math.log(2**BIT))/(math.pi**2) + 1.467
-# ALPHA = 112.51659685863875
-C1 = 0.512
-SIGMA_BASE = math.sqrt(C1*math.log(2**BIT))
-print(SIGMA_BASE)
+CM = 1
+CR = 1
+# CM = (BIT/32)**2
+# CR = (BIT/32)**2
+# ALPHA = (12*math.log(2)*math.log(2**BIT))/(math.pi**2) + 1.467
+# C1 = 0.512
+# SIGMA_BASE = math.sqrt(C1*math.log(2**BIT))
 
 
 # =============================
@@ -98,16 +98,16 @@ class Operation:
     self.reduction = 0
   
   def multiply(self, x: int, y: int):
-    self.mult += 1
+    self.mult += CM
     return x*y
   
   def modulo(self, x: int, y: int):
     if x >= y or x < 0:
-      self.reduction += 1
+      self.reduction += CR
     return x % y
   
   def div(self, x: int, y: int):
-    self.reduction += 1
+    self.reduction += CR
     return x // y
 
 # opr is the global variable. 
@@ -245,8 +245,8 @@ def ElGamalDec(C1: Point, C2: Point, d: int):
 # main function
 # =============================
 if __name__ == '__main__':
-  GP = MsgToPoint(generate_d(args.tlength-1, args.weight))
-  # GP = Point(x=0x6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f413945d898c296, y=0x4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5)
+  # GP = MsgToPoint(generate_d(args.tlength-1, args.weight))
+  GP = Point(x=0x6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f413945d898c296, y=0x4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5)
 
   # generate secret key and public key
   # d = 0x49be667ef9dcbbac55b06295ce870b0702900cdb2dce28d959f9425b16f81798
@@ -283,12 +283,12 @@ if __name__ == '__main__':
   ALPHA = stat.mean(egcd_count_list)
   SIGMA_BASE = stat.pstdev(egcd_count_list)
   iteration = (t+w-1)
-  mu_mult = (t-1)*(2*ALPHA+6)+w*(2*ALPHA+3)
-  mu_reduction = (t-1)*(ALPHA+5) + w*(ALPHA+9/2)
+  mu_mult = CM*((t-1)*(2*ALPHA+6)+w*(2*ALPHA+3))
+  mu_reduction = CR*((t-1)*(ALPHA+5) + w*(ALPHA+9/2))
   mu = mu_mult + mu_reduction
-  sigma_mult = 2*SIGMA_BASE*math.sqrt(iteration)
-  sigma_reduction = math.sqrt((SIGMA_BASE**2)*iteration)
-  sigma = math.sqrt(9*(SIGMA_BASE**2)*(iteration))
+  sigma_mult = 2*CM*SIGMA_BASE*math.sqrt(iteration)
+  sigma_reduction = CR*SIGMA_BASE*math.sqrt(iteration)
+  sigma = math.sqrt((sigma_mult + sigma_reduction)**2)
 
   print("========== Result ==========")
   print("correctness: {0}/{1}".format(correct, LOOP))
